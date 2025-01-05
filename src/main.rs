@@ -216,6 +216,7 @@ fn build_point_sequence(char_string: &str, dimensions: usize) -> Result<Vec<Poin
 fn main() {
     env_logger::init();
     let point_sequence = build_point_sequence("0101", 4).unwrap();
+    println!("Sequence length: {}", point_sequence.len());
     println!(
         "Maximum number of collinear points: {}",
         count_collinear_points(
