@@ -1,8 +1,8 @@
+use anyhow::{anyhow, Result};
+use log::{debug, info};
 use std::cmp::min;
 use std::collections::HashMap;
 use std::iter::zip;
-use anyhow::{anyhow, Result};
-use log::debug;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PointND {
@@ -52,7 +52,6 @@ struct LineND {
 }
 
 impl LineND {
-
     /// Get a normalised 3-dimensional line object from two points.
     ///
     /// Normalise the line by getting a normalised direction and normalised point.
@@ -62,9 +61,9 @@ impl LineND {
         }
         let mut point_numerators: Vec<i128> = point_1.coordinates.clone();
         let mut point_denominators: Vec<i128> = vec![1; point_1.dimensions];
-        let mut direction_numerators: Vec<i128> = zip(
-            &point_1.coordinates, &point_2.coordinates
-        ).map(|(p1_value, p2_value)| p2_value - p1_value).collect();
+        let mut direction_numerators: Vec<i128> = zip(&point_1.coordinates, &point_2.coordinates)
+            .map(|(p1_value, p2_value)| p2_value - p1_value)
+            .collect();
         let mut direction_denominators: Vec<i128> = vec![1; point_1.dimensions];
         let mut normalisation_coordinate_index = 0;
         while direction_numerators[normalisation_coordinate_index] == 0 {
@@ -73,7 +72,7 @@ impl LineND {
         let direction = LineND::normalise_direction(
             &mut direction_numerators,
             &mut direction_denominators,
-            normalisation_coordinate_index
+            normalisation_coordinate_index,
         );
         let point = LineND::normalise_point(
             &mut point_numerators,
@@ -95,7 +94,7 @@ impl LineND {
     fn normalise_direction(
         direction_numerators: &mut Vec<i128>,
         direction_denominators: &mut Vec<i128>,
-        normalisation_coordinate_index: usize
+        normalisation_coordinate_index: usize,
     ) -> Vec<Fraction> {
         let dimensions = direction_numerators.len();
         let normalisation_multiplier = direction_numerators[normalisation_coordinate_index];
@@ -115,7 +114,9 @@ impl LineND {
             direction_numerators[index] /= div;
             direction_denominators[index] /= div;
         }
-        zip(direction_numerators, direction_denominators).map(|(num, denom)| Fraction::new_normalised(*num, *denom)).collect()
+        zip(direction_numerators, direction_denominators)
+            .map(|(num, denom)| Fraction::new_normalised(*num, *denom))
+            .collect()
     }
 
     /// The point is normalised by shifting it along the line such that the coordinate
@@ -125,8 +126,8 @@ impl LineND {
     fn normalise_point(
         point_numerators: &mut Vec<i128>,
         point_denominators: &mut Vec<i128>,
-        direction_numerators: &Vec<i128>,
-        direction_denominators: &Vec<i128>,
+        direction_numerators: &[i128],
+        direction_denominators: &[i128],
         normalisation_coordinate_index: usize,
     ) -> Vec<Fraction> {
         let dimensions = point_numerators.len();
@@ -136,7 +137,9 @@ impl LineND {
             point_denominators[index] *= direction_denominators[index];
             point_numerators[index] -= normalisation_multiplier * direction_numerators[index];
         }
-        zip(point_numerators, point_denominators).map(|(num, denom)| Fraction::new_normalised(*num, *denom)).collect()
+        zip(point_numerators, point_denominators)
+            .map(|(num, denom)| Fraction::new_normalised(*num, *denom))
+            .collect()
     }
 }
 
@@ -154,7 +157,6 @@ pub fn gcd(a: i128, b: i128) -> i128 {
     }
     gcd(b, a % b)
 }
-
 
 /// Get the largest number of points in the sequence intersected by a single line.
 ///
@@ -191,6 +193,35 @@ pub fn count_collinear_points(
     count_max
 }
 
+/// Get the largest number of points in the sequence intersected by a single line.
+///
+/// Iterate in increasing "end_index" order such that progress can be reported
+/// for the first n terms of the sequence.
+pub fn count_collinear_points_progressive(point_sequence: &[PointND]) -> i32 {
+    let mut count_max = 0;
+    for j in 0..point_sequence.len() {
+        let mut line_counts = HashMap::new();
+        for i in 0..j {
+            let line = LineND::new_normalised(&point_sequence[i], &point_sequence[j]);
+            let count = line_counts.entry(line).or_insert(1);
+            *count += 1;
+            if *count > count_max {
+                count_max = *count;
+                info!(
+                    "New maximum number of collinear points {} \
+                    on line through points {:?} and {:?}",
+                    count_max, &point_sequence[i], &point_sequence[j]
+                );
+            }
+        }
+        debug!(
+            "Maximum number of collinear points in the prefix up to index {} is {}",
+            j, count_max
+        );
+    }
+    count_max
+}
+
 fn build_point_sequence(char_string: &str, dimensions: usize) -> Result<Vec<PointND>> {
     let mut points: Vec<PointND> = vec![];
     let mut curr_position = PointND {
@@ -201,26 +232,35 @@ fn build_point_sequence(char_string: &str, dimensions: usize) -> Result<Vec<Poin
     for ch in char_string.chars() {
         let digit = ch.to_digit(10).ok_or(anyhow!("Invalid character {}", ch))? as usize;
         if digit >= dimensions {
-            return Err(anyhow!("Digit {} too large for {} dimensions", digit, dimensions))
+            return Err(anyhow!(
+                "Digit {} too large for {} dimensions",
+                digit,
+                dimensions
+            ));
         }
-        let mut unit_vector = vec![0; dimensions];
-        unit_vector[digit] = 1;
-        for index in 0..dimensions {
-            curr_position.coordinates[index] += unit_vector[index];
-        }
+        curr_position.coordinates[digit] += 1;
         points.push(curr_position.clone());
     }
     Ok(points)
 }
 
+fn iterate_morphism(sequence: String, morphism: &[&str]) -> String {
+    let mut iterated = String::new();
+    for ch in sequence.chars() {
+        let digit = ch.to_digit(10).unwrap() as usize;
+        iterated.push_str(morphism[digit]);
+    }
+    iterated
+}
+
 fn main() {
     env_logger::init();
-    let point_sequence = build_point_sequence("0101", 4).unwrap();
-    println!("Sequence length: {}", point_sequence.len());
-    println!(
-        "Maximum number of collinear points: {}",
-        count_collinear_points(
-            &point_sequence, 0, point_sequence.len(), point_sequence.len()
-        )
-    );
+    let morphism = vec!["01", "10"];
+    let mut sequence = String::from("0");
+    while sequence.len() < 10000 {
+        sequence = iterate_morphism(sequence, &morphism);
+    }
+    info!("Len of sequence: {}", sequence.len());
+
+    count_collinear_points_progressive(&build_point_sequence(sequence.as_str(), 2).unwrap());
 }
